@@ -1,20 +1,27 @@
 %{
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>		
+#include "ast.h"		
 
 extern char yytext[];
+extern int row;
+extern int funcrow;
 extern int column;
-int yyparse(void);
-int yylex (void);
-void yyerror(const char *s)
+int yylex (void);	
+
+void yyerror(YYSTYPE* ret, const char *s)
 {
 	fflush(stdout);
 	printf("\n%*s\n%*s\n", column, "^", column, s);
+	print(*ret);
+  printf("\n");
 }
-void main()
-{
-  yyparse();
-}	
+ 
 %}
+
+%parse-param {YYSTYPE* ret}
+
 %token IDENTIFIER CONSTANT STRING_LITERAL SIZEOF
 %token PTR_OP INC_OP DEC_OP LEFT_OP RIGHT_OP LE_OP GE_OP EQ_OP NE_OP
 %token AND_OP OR_OP MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN ADD_ASSIGN
@@ -27,11 +34,15 @@ void main()
 
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 
-%start translation_unit
+%start start_unit
 %%
 
 primary_expression
 	: IDENTIFIER
+	{
+		$$ = initnode("id");
+		addnode($$, $1);
+	}
 	| CONSTANT
 	| STRING_LITERAL
 	| '(' expression ')'
@@ -169,15 +180,36 @@ constant_expression
 
 declaration
 	: declaration_specifiers ';'
+	{
+		$$ = initnode("decln");
+		addnode($$, $1);
+	}
 	| declaration_specifiers init_declarator_list ';'
+	{
+		$$ = initnode("decln");
+		addnode($$, $1);
+		addnode($$, $2);		
+	}	
 	;
 
 declaration_specifiers
 	: storage_class_specifier
+	{
+		$$ = initnode("declnSpec");
+		addnode($$, $1);		
+	}
 	| storage_class_specifier declaration_specifiers
 	| type_specifier
+	{
+		$$ = initnode("declnSpec");
+		addnode($$, $1);
+	}
 	| type_specifier declaration_specifiers
 	| type_qualifier
+	{
+		$$ = initnode("declnSpec");
+		addnode($$, $1);		
+	}	
 	| type_qualifier declaration_specifiers
 	;
 
@@ -200,10 +232,10 @@ storage_class_specifier
 	;
 
 type_specifier
-	: VOID
-	| CHAR
+	: VOID{$$ = initstr("void");}	
+	| CHAR{$$ = initstr("char");}	
 	| SHORT
-	| INT
+	| INT{$$ = initstr("int");}	
 	| LONG
 	| FLOAT
 	| DOUBLE
@@ -276,14 +308,25 @@ type_qualifier
 declarator
 	: pointer direct_declarator
 	| direct_declarator
+	{
+		$$ = $1;
+	}
 	;
 
 direct_declarator
 	: IDENTIFIER
+	{
+		$$ = initnode("direDeclr");
+	  addnode($$, $1);
+	}
 	| '(' declarator ')'
 	| direct_declarator '[' constant_expression ']'
 	| direct_declarator '[' ']'
 	| direct_declarator '(' parameter_type_list ')'
+	{
+		$$ = $1;
+		addnode($$, $3);
+	}
 	| direct_declarator '(' identifier_list ')'
 	| direct_declarator '(' ')'
 	;
@@ -302,11 +345,18 @@ type_qualifier_list
 
 parameter_type_list
 	: parameter_list
+	{
+		$$ = $1;		
+	}
 	| parameter_list ',' ELLIPSIS
 	;
 
 parameter_list
 	: parameter_declaration
+	{
+		$$ = initnode("params");
+		addnode($$, $1);
+	}	
 	| parameter_list ',' parameter_declaration
 	;
 
@@ -314,6 +364,10 @@ parameter_declaration
 	: declaration_specifiers declarator
 	| declaration_specifiers abstract_declarator
 	| declaration_specifiers
+	{
+		$$ = initnode("paramDecln");
+		addnode($$, $1);
+	}
 	;
 
 identifier_list
@@ -405,7 +459,10 @@ selection_header
 	;
 
 compound_statement
-	: '{' '}'
+: '{' '}'
+{
+	$$ = initnode("comp");
+}
 	| '{' statement_list '}'
 	| '{' declaration_list '}'
 	| '{' declaration_list statement_list '}'
@@ -434,21 +491,61 @@ jump_statement
 	| RETURN expression ';'
 	;
 
-translation_unit
-	: external_declaration
-	| translation_unit external_declaration
+start_unit
+	: translation_unit
+	{
+		*ret = $$;		
+	}
 	;
 
-external_declaration
-	: function_definition
-	| declaration
+translation_unit
+	: external_declaration
+	{
+		$$ = initnode("trans");
+		addnode($$, $1);
+	}
+	| translation_unit external_declaration
+	{
+		$$ = $1;
+		addnode($$, $2);		
+	}
 	;
+
+external_declaration:
+function_definition
+{
+	$$ = $1;
+	addint($$, row-funcrow);
+	funcrow = 0;
+}
+| declaration
+{
+	$$ = $1;
+}
+;
 
 function_definition
 	: declaration_specifiers declarator declaration_list compound_statement
+	{
+		$$ = initnode("func");
+	}
 	| declaration_specifiers declarator compound_statement
+	{
+		$$ = initnode("func");
+		addnode($$, $1);	
+		addnode($$, $2);
+		addnode($$, $3);
+	}
 	| declarator declaration_list compound_statement
 	| declarator compound_statement
 	;
 
 %%
+void main()
+{
+	Ast *ast;
+  if(yyparse(&ast)){
+		fprintf(stderr, "error!\n");
+	}
+	printpretty(ast, 1);
+}	

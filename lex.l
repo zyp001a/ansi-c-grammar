@@ -7,6 +7,7 @@ IS			(u|U|l|L)*
 
 %{
 #include <stdio.h>
+#include "ast.h"
 #include "y.tab.h"
 
 void count();
@@ -50,7 +51,7 @@ int check_type();
 "volatile"		{ count(); return(VOLATILE); }
 "while"			{ count(); return(WHILE); }
 
-{L}({L}|{D})*		{ count(); return(check_type()); }
+{L}({L}|{D})*		{ count(); yylval = initstr(yytext); return(check_type()); }
 
 0[xX]{H}+{IS}?		{ count(); return(CONSTANT); }
 0{D}+{IS}?		{ count(); return(CONSTANT); }
@@ -139,7 +140,8 @@ loop:
 		putchar(c1);
 }
 
-
+int row = 1;//the line number (end of grammar)
+int funcrow = 0;//the line count for func decl(end - start)
 int column = 0;
 
 void count()
@@ -147,14 +149,16 @@ void count()
 	int i;
 
 	for (i = 0; yytext[i] != '\0'; i++)
-		if (yytext[i] == '\n')
+		if (yytext[i] == '\n'){
+      row++;
+      funcrow++;
 			column = 0;
-		else if (yytext[i] == '\t')
+		}else if (yytext[i] == '\t')
 			column += 8 - (column % 8);
 		else
 			column++;
 
-	ECHO;
+//	ECHO;
 }
 
 
